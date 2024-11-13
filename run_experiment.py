@@ -44,6 +44,7 @@ if (mode == 'all') or (mode == 'train'):
         p.add_argument('--' + param, type=experiment_params[param].annotation, required=True, help='special experiment_class argument')
 
     # simulation data source options
+    p.add_argument('--device', type=str, default='cuda:0', required=False, help='CUDA Device to use.')
     p.add_argument('--numpoints', type=int, default=65000, help='Number of points in simulation data source __getitem__.')
     p.add_argument('--pretrain', action='store_true', default=False, required=False, help='Pretrain dirichlet conditions')
     p.add_argument('--pretrain_iters', type=int, default=2000, required=False, help='Number of pretrain iterations')
@@ -175,7 +176,7 @@ dataset = dataio.ReachabilityDataset(
 
 model = modules.SingleBVPNet(in_features=dynamics.input_dim, out_features=1, type=orig_opt.model, mode=orig_opt.model_mode,
                              final_layer_factor=1., hidden_features=orig_opt.num_nl, num_hidden_layers=orig_opt.num_hl)
-model.cuda()
+model.to(opt.device)
 
 experiment_class = getattr(experiments, orig_opt.experiment_class)
 experiment = experiment_class(model=model, dataset=dataset, experiment_dir=experiment_dir, use_wandb=use_wandb)
@@ -189,7 +190,7 @@ if (mode == 'all') or (mode == 'train'):
     else:
         raise NotImplementedError
     experiment.train(
-        batch_size=orig_opt.batch_size, epochs=orig_opt.num_epochs, lr=orig_opt.lr, 
+        device=opt.device, batch_size=orig_opt.batch_size, epochs=orig_opt.num_epochs, lr=orig_opt.lr, 
         steps_til_summary=orig_opt.steps_til_summary, epochs_til_checkpoint=orig_opt.epochs_til_ckpt, 
         loss_fn=loss_fn, clip_grad=orig_opt.clip_grad, use_lbfgs=orig_opt.use_lbfgs, adjust_relative_grads=orig_opt.adj_rel_grads,
         val_x_resolution=orig_opt.val_x_resolution, val_y_resolution=orig_opt.val_y_resolution, val_z_resolution=orig_opt.val_z_resolution, val_time_resolution=orig_opt.val_time_resolution,
@@ -197,7 +198,7 @@ if (mode == 'all') or (mode == 'train'):
 
 if (mode == 'all') or (mode == 'test'):
     experiment.test(
-        current_time=current_time, 
+        device=opt.device, current_time=current_time, 
         last_checkpoint=orig_opt.num_epochs, checkpoint_dt=orig_opt.epochs_til_ckpt, 
         checkpoint_toload=opt.checkpoint_toload, dt=opt.dt,
         num_scenarios=opt.num_scenarios, num_violations=opt.num_violations, 
