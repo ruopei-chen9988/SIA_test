@@ -128,7 +128,76 @@ class Dynamics(ABC):
     @abstractmethod
     def plot_config(self):
         raise NotImplementedError
-
+    
+class PlanarRobot2D(Dynamics):
+    def __init__(self, obstacle_radius: float, set_mode: str, velocity: float):
+        self.obstacle_radius = obstacle_radius  # Obstacle radius at origin
+        self.velocity = velocity  # Constant velocity of the robot
+        
+        super().__init__(
+            loss_type='brt_hjivi', set_mode=set_mode,
+            state_dim=2, input_dim=3, control_dim=1, disturbance_dim=0,
+            state_mean=[0, 0],  # [x, y]
+            state_var=[2, 2],
+            value_mean=0.25,
+            value_var=0.5,
+            value_normto=0.02,
+            deepreach_model="exact",
+        )
+    
+    def state_test_range(self):
+        return [
+            [-2, 2], #px
+            [-2, 2], #py
+        ]
+    
+    def equivalent_wrapped_state(self, state):
+        wrapped_state = torch.clone(state)
+        # wrapped_state[..., 2] = (wrapped_state[..., 2] + math.pi) % (2 * math.pi) - math.pi
+        return wrapped_state
+    
+    def dsdt(self, state, control):
+        dsdt = torch.zeros_like(state)
+        dsdt[..., 0] = self.velocity * torch.cos(control[..., 0])  # dx/dt
+        dsdt[..., 1] = self.velocity * torch.sin(control[..., 0])  # dy/dt
+        return dsdt
+    
+    def boundary_fn(self, state):
+        return torch.norm(state, dim=-1) - self.obstacle_radius
+    
+    def sample_target_state(self, num_samples):
+        raise NotImplementedError
+    
+    def cost_fn(self, state_traj):
+        return torch.min(self.boundary_fn(state_traj), dim=-1).values
+    
+    def hamiltonian(self, state, dvds):
+        V_norm = torch.norm(dvds, dim=-1)
+        if self.set_mode == 'avoid':
+            return self.velocity * V_norm
+        else:
+            return -self.velocity * V_norm
+    
+    def optimal_control(self, state, dvds):
+        theta_star = torch.atan2(dvds[..., 1], dvds[..., 0])
+        if self.set_mode == 'reach':
+            theta_star = theta_star + math.pi   
+        theta_star = (theta_star + math.pi) % (2.0 * math.pi) - math.pi     
+        return theta_star.unsqueeze(-1)
+    
+    def optimal_disturbance(self, state, dvds):
+        raise NotImplementedError
+    
+    def plot_config(self):
+        return {
+            'state_slices': [0.0, 0.0],
+            'state_labels': ['x', 'y'],
+            'x_axis_idx': 0,
+            'y_axis_idx': 1,
+            'z_axis_idx': 0,
+            
+        }
+        
 class ParameterizedVertDrone2D(Dynamics):
     def __init__(self, gravity:float, input_multiplier_max:float, input_magnitude_max:float):
         self.gravity = gravity                             # g
